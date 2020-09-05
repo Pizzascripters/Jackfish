@@ -796,9 +796,15 @@ function Jackfish(cb, params) {
     }
 
     DEALER_STATES.forEach((dealer, c) => {
-      let shiftedComp = pullCard(comp, c, cards--);
+      let shiftedComp;
+      if(params.count.system === 'none') {
+        shiftedComp = pullCard(comp, c, cards - 1);
+      } else {
+        // Counting systems take into consideration how the deck changes after dealer card shows
+        shiftedComp = comp;
+      }
       states[c] = initStateMatrix(dealer, shiftedComp);
-      states[c] = squishMatrix(progressMState(states[c], cards, endHands, 12));
+      states[c] = squishMatrix(progressMState(states[c], cards - 1, endHands, 12));
     });
 
     // If peek, weight end states such that blackjack is impossible
@@ -1067,6 +1073,12 @@ function Jackfish(cb, params) {
   // Shift the deck distribution after pulling one card
   function pullCard(state, c, cards) {
     if(state[c] === 0) return zeroes([state.length]);
+    if(cards <= 0) {
+      return fillArray(i => {
+        if(i === 8) return TEN_ODDS;
+        return CARD_ODDS;
+      }, 10)
+    }
     let total = vtotal(state);
     state = vscale(state, 1/total); // Normalize the vector
     let newState = [];
@@ -1141,7 +1153,7 @@ function Jackfish(cb, params) {
 
     if(reps) {
       for(let i = 0; i < reps; i++) {
-        mState = progressMState(mState, cards, endHands);
+        mState = progressMState(mState, cards--, endHands);
       }
       return mState;
     }

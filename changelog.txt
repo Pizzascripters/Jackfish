@@ -1,0 +1,5 @@
+1.0 - Initial Release - 8/31/20
+
+  1.0.1 - Single deck partial fix - 9/5/20
+  * pullCard uses normal deck comp when out of cards
+  * Note: Before Jackfish malfunctioned with <14 cards in shoe. Now Jackfish works reasonably with 7+ cards, but still doesn't work with <7.
