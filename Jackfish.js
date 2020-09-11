@@ -5,9 +5,9 @@ const BLACKJACK = -1;
 const BUST = -2;
 const DEALER_TEN = -3;
 const DEALER_ACE = -4;
-const ACE = 43;
 const SOFT = 0x20;
 const PAIR = 0x40;
+const ACE = 11 | SOFT;
 
 // A list of all cards
 const CARD_STATES = (() => {
@@ -55,18 +55,18 @@ const DEALER_STATES = HAND_STATES.filter(hand => (hand > 0 && hand < 10) || hand
 let scripts = document.getElementsByTagName('script');
 let mySrc = scripts[scripts.length - 1].src;
 
-function Jackfish(params_) {
+function Jackfish(params_, callback) {
   if(!params_) params_ = {};
 
   /*-- Private variables --*/
 
   let matrices = {};
   let params = params_,
-      bjOdds, insurance, edge, isLoaded = false,
-      table,
+      bjOdds, insurance, edge, table,
+      isLoaded = false,
       listeners = [];
 
-  /*-- Public functions --*/
+  /*-- Web Worker --*/
 
   let worker = new Worker(
     mySrc.substr(0, mySrc.lastIndexOf('/')) + '/JackfishWorker.js'
@@ -74,11 +74,13 @@ function Jackfish(params_) {
   addMissingParams();
   worker.postMessage(['Constructor', [params]]);
   worker.addEventListener('message', e => {
+    // Upon doing everything, unpack all recieved data
     if(e.data[0] === 'doAll') {
       isLoaded = true;
       unpackAll.bind(this)(e.data[1]);
     }
 
+    // Call listeners added by user
     for(let listener of listeners) {
       if(listener.event === e.data[0]) {
         listener.f(e.data[1]);
@@ -86,15 +88,21 @@ function Jackfish(params_) {
     }
   });
 
-  this.setParams = (params_, doAll) => {
+  /*-- Public functions --*/
+
+  this.setParams = (params_, doAll, callback) => {
     params = params_;
     addMissingParams();
     worker.postMessage(['setParams', [params_]]);
     if(doAll) {
-      let listener;
-      listener = this.addListener('setParams', () => {
+      let listener = this.addListener('setParams', () => {
         this.removeListener(listener);
-        this.doAll();
+        this.doAll(callback);
+      });
+    } else {
+      let listener = this.addListener('setParams', params => {
+        this.removeListener(listener);
+        callback(params);
       });
     }
   }
@@ -105,18 +113,18 @@ function Jackfish(params_) {
   }
 
   this.getBJOdds = dealer => {
-    if(dealer === ACE || dealer === 11) dealer = DEALER_ACE;
+    if(dealer === ACE || dealer === 11 || dealer === 'A') dealer = DEALER_ACE;
     if(dealer === 10) dealer = DEALER_TEN;
     return bjOdds[DEALER_STATES.indexOf(dealer)];
   }
 
-  this.doAll = (callback) => {
+  this.doAll = callback => {
     isLoaded = false;
     worker.postMessage(['doAll']);
     if(callback !== undefined) {
-      let listener = this.addListener('doAll', () => {
+      let listener = this.addListener('doAll', data => {
         this.removeListener(listener);
-        callback();
+        callback(data);
       });
     }
   }
@@ -128,16 +136,16 @@ function Jackfish(params_) {
   this.updateSimulation = (options) => {
     worker.postMessage(['updateSimulation', [options]]);
   }
-  this.runSimulation = (cb) => {
-    createSimCallback.bind(this)(cb);
+  this.runSimulation = callback => {
+    createSimCallback.bind(this)(callback);
     worker.postMessage(['runSimulation', []]);
   }
-  this.clearSimulation = (cb) => {
-    createSimCallback.bind(this)(cb);
+  this.clearSimulation = callback => {
+    createSimCallback.bind(this)(callback);
     worker.postMessage(['clearSimulation', []]);
   }
-  this.stopSimulation = (cb) => {
-    createSimCallback.bind(this)(cb);
+  this.stopSimulation = callback => {
+    createSimCallback.bind(this)(callback);
     worker.postMessage(['stopSimulation', []]);
   }
 
@@ -159,7 +167,7 @@ function Jackfish(params_) {
 
   this.getTable = (player, dealer) => {
     if(player && dealer) {
-      if(dealer === 'A' || dealer === ACE) dealer = DEALER_ACE;
+      if(dealer === 11 || dealer === 'A' || dealer === ACE) dealer = DEALER_ACE;
       if(dealer === 10) dealer = DEALER_TEN;
       return table[TABLE_HANDS.indexOf(player)][DEALER_STATES.indexOf(dealer)];
     } else {
@@ -167,12 +175,12 @@ function Jackfish(params_) {
     }
   }
 
-  this.getReturn = indexMatrix.bind(null, "rsM", HAND_STATES, DEALER_STATES);
-  this.getReturnNoSurrender = indexMatrix.bind(null, "rdM", HAND_STATES, DEALER_STATES);
-  this.getReturnNoDouble = indexMatrix.bind(null, "rM", HAND_STATES, DEALER_STATES);
-  this.getHit = indexMatrix.bind(null, "hitM", HAND_STATES, DEALER_STATES);
-  this.getStand = indexMatrix.bind(null, "standM", HAND_STATES, DEALER_STATES);
-  this.getDouble = indexMatrix.bind(null, "doubleM", HAND_STATES, DEALER_STATES);
+  this.getReturn = bindIndexMatrix("rsM");
+  this.getReturnNoSurrender = bindIndexMatrix("rdM");
+  this.getReturnNoDouble = bindIndexMatrix("rM");
+  this.getHit = bindIndexMatrix("hitM");
+  this.getStand = bindIndexMatrix("standM");
+  this.getDouble = bindIndexMatrix("doubleM");
   this.getSplit = indexMatrix.bind(null, "splitM", DEALER_STATES, DEALER_STATES);
   this.getEnd = indexMatrix.bind(null, "endM", DEALER_STATES, HAND_STATES);
 
@@ -217,13 +225,13 @@ function Jackfish(params_) {
     loaded = true;
   }
 
-  function createSimCallback(cb) {
+  function createSimCallback(callback) {
     function callback(data) {
-      cb(data);
+      callback(data);
     }
 
     function stopCallback(data) {
-      cb(data);
+      callback(data);
       this.removeListener(l1);
       this.removeListener(l2);
       this.removeListener(l3);
@@ -240,13 +248,14 @@ function Jackfish(params_) {
     if(rowIndexer === DEALER_STATES) {
       if(i === 10) {
         i = -3;
-      } else if(i === ACE || i === 'A') {
+      } else if(i === ACE || i === 'A' || j === 11) {
         i = -4;
       }
-    } else if(colIndexer === DEALER_STATES) {
+    }
+    if(colIndexer === DEALER_STATES) {
       if(j === 10) {
         j = -3;
-      } else if(j === ACE) {
+      } else if(j === ACE || j === 'A' || j === 11) {
         j = -4;
       }
     }
@@ -266,6 +275,10 @@ function Jackfish(params_) {
     }
   }
 
+  function bindIndexMatrix(name) {
+    return indexMatrix.bind(null, name, DEALER_STATES, HAND_STATES)
+  }
+
   function addMissingParams() {
     if(!params.blackjack) params.blackjack = 1.5;
     if(!params.count) params.count = { system: 'none' };
@@ -273,15 +286,17 @@ function Jackfish(params_) {
     if(params.soft17 === undefined) params.soft17 = true;
     if(!params.surrender) params.surrender = 'none';
 
+    if(!params.count.decks && params.count.cards) params.count.decks = params.count.cards / 52;
+    if(!params.count.cards && params.count.decks) params.count.cards = params.count.decks * 52;
     if(!params.count.system) params.count.system = 'none';
     if(!params.count.decks) params.count.decks = 6;
-    if(params.count.system !== 'none' && !params.count.tc && !params.count.count) {
+    if(params.count.system !== 'none' && params.count.tc === undefined && params.count.count === undefined) {
       params.count.tc = 0;
       params.count.count = 0;
-    } else if(params.count.system !== 'none' && !params.count.tc) {
-      params.count.count = 0;
-    } else if(params.count.system !== 'none' && !params.count.count) {
-      params.count.tc = 0;
+    } else if(params.count.system !== 'none' && params.count.count === undefined) {
+      params.count.count = params.count.tc / params.count.decks;
+    } else if(params.count.system !== 'none' && params.count.tc === undefined) {
+      params.count.tc = params.count.count * params.count.decks;
     }
 
     if(!params.double) {
@@ -320,7 +335,7 @@ function Jackfish(params_) {
     }
   }
 
-  this.setParams(params, true);
+  this.setParams(params, true, callback);
 }
 
 /*-- Utility functions --*/
