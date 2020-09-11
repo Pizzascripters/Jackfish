@@ -839,6 +839,8 @@ function Jackfish(params, callback) {
       let shiftedComp;
       if(params.count.system === 'none') {
         shiftedComp = pullCard(comp, c, cards - 1);
+      } else if(params.count.system === 'perfect') {
+        shiftedComp = copy(comp);
       } else {
         // Using the dealer card, shift the count back to what it was before the dealer card was shown
         // Then using that comp, set shiftedComp to pullCard(comp, c, cards - 1)

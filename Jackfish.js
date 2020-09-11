@@ -102,7 +102,9 @@ function Jackfish(params_, callback) {
     } else {
       let listener = this.addListener('setParams', params => {
         this.removeListener(listener);
-        callback(params);
+        if(callback) {
+          callback(params);
+        }
       });
     }
   }
