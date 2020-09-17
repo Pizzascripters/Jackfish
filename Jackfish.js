@@ -228,10 +228,6 @@ function Jackfish(params_, callback) {
   }
 
   function createSimCallback(callback) {
-    function callback(data) {
-      callback(data);
-    }
-
     function stopCallback(data) {
       callback(data);
       this.removeListener(l1);
@@ -240,10 +236,10 @@ function Jackfish(params_, callback) {
       this.removeListener(l4);
     }
 
-    let l1 = this.addListener('runSimulation', callback.bind(this));
-    let l2 = this.addListener('clearSimulation', callback.bind(this));
-    let l3 = this.addListener('stopSimulation', stopCallback.bind(this));
-    let l4 = this.addListener('updateSimulation', callback.bind(this));
+    let l1 = this.addListener('runSimulation', callback.bind(this)),
+        l2 = this.addListener('clearSimulation', callback.bind(this)),
+        l3 = this.addListener('stopSimulation', stopCallback.bind(this)),
+        l4 = this.addListener('updateSimulation', callback.bind(this));
   }
 
   function indexMatrix(name, rowIndexer, colIndexer, i, j) {
@@ -278,7 +274,7 @@ function Jackfish(params_, callback) {
   }
 
   function bindIndexMatrix(name) {
-    return indexMatrix.bind(null, name, DEALER_STATES, HAND_STATES)
+    return indexMatrix.bind(null, name, HAND_STATES, DEALER_STATES)
   }
 
   function addMissingParams() {
